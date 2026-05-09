@@ -256,7 +256,7 @@ static s3b_hash_visit_t block_cache_check_one;
  *
  * Returns NULL and sets errno on failure.
  */
-//[of]:struct s3backer_store * block_cache_create(struct block_cache_conf *config, struct s3backer_store *inner)
+//[of]:block_cache_create(struct block_cache_conf *config, struct s3backer_store *inner)
 struct s3backer_store * block_cache_create(struct block_cache_conf *config, struct s3backer_store *inner)
 {
     struct s3backer_store *s3b;
@@ -381,7 +381,7 @@ fail0:
 /*
  * Callback function to pre-load the cache from a pre-existing cache file.
  */
-//[of]:static int block_cache_dcache_load(void *arg, s3b_block_t dslot, s3b_block_t block_num, const u_char *etag)
+//[of]:block_cache_dcache_load(void *arg, s3b_block_t dslot, s3b_block_t block_num, const u_char *etag)
 static int block_cache_dcache_load(void *arg, s3b_block_t dslot, s3b_block_t block_num, const u_char *etag)
 {
     const u_int dirty = etag == NULL;
@@ -433,7 +433,7 @@ static int block_cache_dcache_load(void *arg, s3b_block_t dslot, s3b_block_t blo
 }
 //[cf]
 
-//[of]:static int block_cache_create_threads(struct s3backer_store *s3b)
+//[of]:block_cache_create_threads(struct s3backer_store *s3b)
 static int block_cache_create_threads(struct s3backer_store *s3b)
 {
     struct block_cache_private *const priv = s3b->data;
@@ -461,7 +461,7 @@ fail:
 }
 //[cf]
 
-//[of]:static int block_cache_meta_data(struct s3backer_store *s3b, off_t *file_sizep, u_int *block_sizep)
+//[of]:block_cache_meta_data(struct s3backer_store *s3b, off_t *file_sizep, u_int *block_sizep)
 static int block_cache_meta_data(struct s3backer_store *s3b, off_t *file_sizep, u_int *block_sizep)
 {
     struct block_cache_private *const priv = s3b->data;
@@ -470,7 +470,7 @@ static int block_cache_meta_data(struct s3backer_store *s3b, off_t *file_sizep, 
 }
 //[cf]
 
-//[of]:static int block_cache_set_mount_token(struct s3backer_store *s3b, int32_t *old_valuep, int32_t new_value)
+//[of]:block_cache_set_mount_token(struct s3backer_store *s3b, int32_t *old_valuep, int32_t new_value)
 static int block_cache_set_mount_token(struct s3backer_store *s3b, int32_t *old_valuep, int32_t new_value)
 {
     struct block_cache_private *const priv = s3b->data;
@@ -489,7 +489,7 @@ static int block_cache_set_mount_token(struct s3backer_store *s3b, int32_t *old_
 }
 //[cf]
 
-//[of]:static int block_cache_flush_blocks(struct s3backer_store *s3b, const s3b_block_t *block_nums, u_int num_blocks, long timeout)
+//[of]:block_cache_flush_blocks(struct s3backer_store *s3b, const s3b_block_t *block_nums, u_int num_blocks, long timeout)
 static int block_cache_flush_blocks(struct s3backer_store *s3b, const s3b_block_t *block_nums, u_int num_blocks, long timeout)
 {
     struct block_cache_private *const priv = s3b->data;
@@ -536,7 +536,7 @@ done:
 }
 //[cf]
 
-//[of]:static int block_cache_flush_blocks2(struct s3backer_store *s3b, const s3b_block_t *const block_nums, const u_int num_blocks, long timeout)
+//[of]:block_cache_flush_blocks2(struct s3backer_store *s3b, const s3b_block_t *const block_nums, const u_int num_blocks, long timeout)
 static int block_cache_flush_blocks2(struct s3backer_store *s3b, const s3b_block_t *const block_nums, const u_int num_blocks, long timeout)
 {
     struct block_cache_private *const priv = s3b->data;
@@ -641,7 +641,7 @@ static int block_cache_flush_blocks2(struct s3backer_store *s3b, const s3b_block
 }
 //[cf]
 
-//[of]:static int block_cache_shutdown(struct s3backer_store *const s3b)
+//[of]:block_cache_shutdown(struct s3backer_store *const s3b)
 static int block_cache_shutdown(struct s3backer_store *const s3b)
 {
     struct block_cache_private *const priv = s3b->data;
@@ -674,7 +674,7 @@ static int block_cache_shutdown(struct s3backer_store *const s3b)
 }
 //[cf]
 
-//[of]:static void block_cache_destroy(struct s3backer_store *const s3b)
+//[of]:block_cache_destroy(struct s3backer_store *const s3b)
 static void block_cache_destroy(struct s3backer_store *const s3b)
 {
     struct block_cache_private *const priv = s3b->data;
@@ -706,7 +706,7 @@ static void block_cache_destroy(struct s3backer_store *const s3b)
 }
 //[cf]
 
-//[of]:void block_cache_get_stats(struct s3backer_store *s3b, struct block_cache_stats *stats)
+//[of]:block_cache_get_stats(struct s3backer_store *s3b, struct block_cache_stats *stats)
 void block_cache_get_stats(struct s3backer_store *s3b, struct block_cache_stats *stats)
 {
     struct block_cache_private *const priv = s3b->data;
@@ -719,7 +719,7 @@ void block_cache_get_stats(struct s3backer_store *s3b, struct block_cache_stats 
 }
 //[cf]
 
-//[of]:void block_cache_clear_stats(struct s3backer_store *s3b)
+//[of]:block_cache_clear_stats(struct s3backer_store *s3b)
 void block_cache_clear_stats(struct s3backer_store *s3b)
 {
     struct block_cache_private *const priv = s3b->data;
@@ -730,7 +730,7 @@ void block_cache_clear_stats(struct s3backer_store *s3b)
 }
 //[cf]
 
-//[of]:static int block_cache_survey_non_zero(struct s3backer_store *s3b, block_list_func_t *callback, void *arg)
+//[of]:block_cache_survey_non_zero(struct s3backer_store *s3b, block_list_func_t *callback, void *arg)
 static int block_cache_survey_non_zero(struct s3backer_store *s3b, block_list_func_t *callback, void *arg)
 {
     struct block_cache_private *const priv = s3b->data;
@@ -775,7 +775,7 @@ done:
 }
 //[cf]
 
-//[of]:static int block_cache_append_block_list(void *arg, void *value)
+//[of]:block_cache_append_block_list(void *arg, void *value)
 static int block_cache_append_block_list(void *arg, void *value)
 {
     struct cache_entry *const entry = value;
@@ -785,7 +785,7 @@ static int block_cache_append_block_list(void *arg, void *value)
 }
 //[cf]
 
-//[of]:static int block_cache_read_block(struct s3backer_store *const s3b, s3b_block_t block_num, void *dest,
+//[of]:block_cache_read_block(struct s3backer_store *const s3b, s3b_block_t block_num, void *dest,
 static int block_cache_read_block(struct s3backer_store *const s3b, s3b_block_t block_num, void *dest,
   u_char *actual_etag, const u_char *expect_etag, int strict)
 {
@@ -798,7 +798,7 @@ static int block_cache_read_block(struct s3backer_store *const s3b, s3b_block_t 
 }
 //[cf]
 
-//[of]:static int block_cache_read_block_part(struct s3backer_store *s3b, s3b_block_t block_num, u_int off, u_int len, void *dest)
+//[of]:block_cache_read_block_part(struct s3backer_store *s3b, s3b_block_t block_num, u_int off, u_int len, void *dest)
 static int block_cache_read_block_part(struct s3backer_store *s3b, s3b_block_t block_num, u_int off, u_int len, void *dest)
 {
     struct block_cache_private *const priv = s3b->data;
@@ -818,7 +818,7 @@ static int block_cache_read_block_part(struct s3backer_store *s3b, s3b_block_t b
 /*
  * Read a block, and trigger read-ahead if necessary.
  */
-//[of]:static int block_cache_read(struct block_cache_private *const priv, s3b_block_t block_num, u_int off, u_int len, void *dest)
+//[of]:block_cache_read(struct block_cache_private *const priv, s3b_block_t block_num, u_int off, u_int len, void *dest)
 static int block_cache_read(struct block_cache_private *const priv, s3b_block_t block_num, u_int off, u_int len, void *dest)
 {
     struct block_cache_conf *const config = priv->config;
@@ -1054,7 +1054,7 @@ fail:
 }
 //[cf]
 
-//[of]:static int block_cache_write_block(struct s3backer_store *const s3b, s3b_block_t block_num, const void *src, u_char *etag,
+//[of]:block_cache_write_block(struct s3backer_store *const s3b, s3b_block_t block_num, const void *src, u_char *etag,
 static int block_cache_write_block(struct s3backer_store *const s3b, s3b_block_t block_num, const void *src, u_char *etag,
   check_cancel_t *check_cancel, void *check_cancel_arg)
 {
@@ -1066,7 +1066,7 @@ static int block_cache_write_block(struct s3backer_store *const s3b, s3b_block_t
 }
 //[cf]
 
-//[of]:static int block_cache_write_block_part(struct s3backer_store *s3b, s3b_block_t block_num, u_int off, u_int len, const void *src)
+//[of]:block_cache_write_block_part(struct s3backer_store *s3b, s3b_block_t block_num, u_int off, u_int len, const void *src)
 static int block_cache_write_block_part(struct s3backer_store *s3b, s3b_block_t block_num, u_int off, u_int len, const void *src)
 {
     struct block_cache_private *const priv = s3b->data;
@@ -1086,7 +1086,7 @@ static int block_cache_write_block_part(struct s3backer_store *s3b, s3b_block_t 
 /*
  * Write a block or a portion thereof.
  */
-//[of]:static int block_cache_write(struct block_cache_private *const priv, s3b_block_t block_num, u_int off, u_int len, const void *src)
+//[of]:block_cache_write(struct block_cache_private *const priv, s3b_block_t block_num, u_int off, u_int len, const void *src)
 static int block_cache_write(struct block_cache_private *const priv, s3b_block_t block_num, u_int off, u_int len, const void *src)
 {
     struct block_cache_conf *const config = priv->config;
@@ -1342,7 +1342,7 @@ done:
 /*
  * Evict a CLEAN[2] entry.
  */
-//[of]:static void block_cache_free_entry(struct block_cache_private *priv, struct cache_entry **entryp)
+//[of]:block_cache_free_entry(struct block_cache_private *priv, struct cache_entry **entryp)
 static void block_cache_free_entry(struct block_cache_private *priv, struct cache_entry **entryp)
 {
     struct block_cache_conf *const config = priv->config;
@@ -1551,7 +1551,7 @@ done:
 /*
  * See if we want to cancel the current write for the given block.
  */
-//[of]:static int block_cache_check_cancel(void *arg, s3b_block_t block_num)
+//[of]:block_cache_check_cancel(void *arg, s3b_block_t block_num)
 static int block_cache_check_cancel(void *arg, s3b_block_t block_num)
 {
     struct block_cache_private *const priv = arg;
@@ -1585,7 +1585,7 @@ static int block_cache_check_cancel(void *arg, s3b_block_t block_num)
  *
  * This assumes the mutex is held.
  */
-//[of]:static void block_cache_worker_wait(struct block_cache_private *priv, struct cache_entry *entry)
+//[of]:block_cache_worker_wait(struct block_cache_private *priv, struct cache_entry *entry)
 static void block_cache_worker_wait(struct block_cache_private *priv, struct cache_entry *entry)
 {
     uint64_t wake_time_millis;
@@ -1604,7 +1604,7 @@ static void block_cache_worker_wait(struct block_cache_private *priv, struct cac
  *
  * Returns ETIMEDOUT if we timed out.
  */
-//[of]:static int block_cache_cond_timedwait(struct block_cache_private *priv, pthread_cond_t *cond, uint64_t wake_time_millis)
+//[of]:block_cache_cond_timedwait(struct block_cache_private *priv, pthread_cond_t *cond, uint64_t wake_time_millis)
 static int block_cache_cond_timedwait(struct block_cache_private *priv, pthread_cond_t *cond, uint64_t wake_time_millis)
 {
     struct timespec wake_time;
@@ -1631,7 +1631,7 @@ static uint32_t block_cache_get_time(struct block_cache_private *priv)
 /*
  * Get the head of the appropriate clean list, based on whether the block is low or high priority.
  */
-//[of]:static struct list_head * block_cache_cleans_list(struct block_cache_private *const priv, s3b_block_t block_num)
+//[of]:block_cache_cleans_list(struct block_cache_private *const priv, s3b_block_t block_num)
 static struct list_head * block_cache_cleans_list(struct block_cache_private *const priv, s3b_block_t block_num)
 {
     return block_cache_high_prio(priv->config, block_num) ? &priv->hi_cleans : &priv->lo_cleans;
@@ -1643,7 +1643,7 @@ static struct list_head * block_cache_cleans_list(struct block_cache_private *co
  *
  * NOTE: this function must always return the same value for any given block number.
  */
-//[of]:static int block_cache_high_prio(struct block_cache_conf *const config, s3b_block_t block_num)
+//[of]:block_cache_high_prio(struct block_cache_conf *const config, s3b_block_t block_num)
 static int block_cache_high_prio(struct block_cache_conf *const config, s3b_block_t block_num)
 {
     return block_num < config->num_protected;
@@ -1653,7 +1653,7 @@ static int block_cache_high_prio(struct block_cache_conf *const config, s3b_bloc
 /*
  * Return current time in milliseconds.
  */
-//[of]:static uint64_t block_cache_get_time_millis(void)
+//[of]:block_cache_get_time_millis(void)
 static uint64_t block_cache_get_time_millis(void)
 {
     struct timeval tv;
@@ -1663,7 +1663,7 @@ static uint64_t block_cache_get_time_millis(void)
 }
 //[cf]
 
-//[of]:static int block_cache_free_one(void *arg, void *value)
+//[of]:block_cache_free_one(void *arg, void *value)
 static int block_cache_free_one(void *arg, void *value)
 {
     struct block_cache_private *const priv = arg;
@@ -1680,7 +1680,7 @@ static int block_cache_free_one(void *arg, void *value)
 /*
  * Mark an entry verified and free the extra bytes we allocated for the ETag.
  */
-//[of]:static struct cache_entry * block_cache_verified(struct block_cache_private *priv, struct cache_entry *entry)
+//[of]:block_cache_verified(struct block_cache_private *priv, struct cache_entry *entry)
 static struct cache_entry * block_cache_verified(struct block_cache_private *priv, struct cache_entry *entry)
 {
     struct list_head *const cleans_list = block_cache_cleans_list(priv, entry->block_num);
@@ -1714,7 +1714,7 @@ done:
 /*
  * Read the data from a cached block into a buffer.
  */
-//[of]:static int block_cache_read_data(struct block_cache_private *priv, struct cache_entry *entry, void *dest, u_int off, u_int len)
+//[of]:block_cache_read_data(struct block_cache_private *priv, struct cache_entry *entry, void *dest, u_int off, u_int len)
 static int block_cache_read_data(struct block_cache_private *priv, struct cache_entry *entry, void *dest, u_int off, u_int len)
 {
     struct block_cache_conf *const config = priv->config;
@@ -1738,7 +1738,7 @@ static int block_cache_read_data(struct block_cache_private *priv, struct cache_
 /*
  * Write the data in a buffer to a cached block.
  */
-//[of]:static int block_cache_write_data(struct block_cache_private *priv, struct cache_entry *entry, const void *src, u_int off, u_int len)
+//[of]:block_cache_write_data(struct block_cache_private *priv, struct cache_entry *entry, const void *src, u_int off, u_int len)
 static int block_cache_write_data(struct block_cache_private *priv, struct cache_entry *entry, const void *src, u_int off, u_int len)
 {
     struct block_cache_conf *const config = priv->config;
@@ -1766,7 +1766,7 @@ static int block_cache_write_data(struct block_cache_private *priv, struct cache
  * Compute dirty ratio, i.e., percent of total cache space occupied by entries
  * that are not CLEAN[2] or READING[2].
  */
-//[of]:static double block_cache_dirty_ratio(struct block_cache_private *priv)
+//[of]:block_cache_dirty_ratio(struct block_cache_private *priv)
 static double block_cache_dirty_ratio(struct block_cache_private *priv)
 {
     struct block_cache_conf *const config = priv->config;
@@ -1788,7 +1788,7 @@ struct check_info {
 };
 //[cf]
 
-//[of]:static void block_cache_check_invariants(struct block_cache_private *priv, int allow_stopping)
+//[of]:block_cache_check_invariants(struct block_cache_private *priv, int allow_stopping)
 static void block_cache_check_invariants(struct block_cache_private *priv, int allow_stopping)
 {
     struct block_cache_conf *const config = priv->config;
@@ -1841,7 +1841,7 @@ static void block_cache_check_invariants(struct block_cache_private *priv, int a
 }
 //[cf]
 
-//[of]:static int block_cache_check_one(void *arg, void *value)
+//[of]:block_cache_check_one(void *arg, void *value)
 static int block_cache_check_one(void *arg, void *value)
 {
     struct cache_entry *const entry = value;
