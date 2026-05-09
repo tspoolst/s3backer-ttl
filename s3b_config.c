@@ -82,6 +82,10 @@
 #define S3BACKER_DEFAULT_BLOCK_CACHE_WRITE_DELAY    250             // 250ms
 #define S3BACKER_DEFAULT_BLOCK_CACHE_TIMEOUT        0
 #define S3BACKER_DEFAULT_BLOCK_CACHE_MAX_DIRTY      0
+#define S3BACKER_DEFAULT_TTL_MODE                   0
+#define S3BACKER_DEFAULT_TTL_BASE                   60
+#define S3BACKER_DEFAULT_TTL_BONUS                  30
+#define S3BACKER_DEFAULT_TTL_MAX_LIMIT              3600
 #define S3BACKER_DEFAULT_READ_AHEAD                 4
 #define S3BACKER_DEFAULT_READ_AHEAD_TRIGGER         2
 #define S3BACKER_DEFAULT_COMPRESSION                "deflate"
@@ -220,6 +224,10 @@ static struct s3b_config config = {
 
     // Block cache config
     .block_cache= {
+        .ttl_mode=              S3BACKER_DEFAULT_TTL_MODE,
+        .ttl_base=              S3BACKER_DEFAULT_TTL_BASE,
+        .ttl_bonus=             S3BACKER_DEFAULT_TTL_BONUS,
+        .ttl_max_limit=         S3BACKER_DEFAULT_TTL_MAX_LIMIT,
         .cache_size=            S3BACKER_DEFAULT_BLOCK_CACHE_SIZE,
         .num_threads=           S3BACKER_DEFAULT_BLOCK_CACHE_NUM_THREADS,
         .write_delay=           S3BACKER_DEFAULT_BLOCK_CACHE_WRITE_DELAY,
@@ -371,6 +379,23 @@ static const struct fuse_opt option_list[] = {
         .templ=     "--blockCacheFileAdvise",
         .offset=    offsetof(struct s3b_config, block_cache.fadvise),
         .value=     1
+    },
+    {
+        .templ=     "--ttlMode",
+        .offset=    offsetof(struct s3b_config, block_cache.ttl_mode),
+        .value=     1
+    },
+    {
+        .templ=     "--ttlBase=%u",
+        .offset=    offsetof(struct s3b_config, block_cache.ttl_base),
+    },
+    {
+        .templ=     "--ttlBonus=%u",
+        .offset=    offsetof(struct s3b_config, block_cache.ttl_bonus),
+    },
+    {
+        .templ=     "--ttlMaxLimit=%u",
+        .offset=    offsetof(struct s3b_config, block_cache.ttl_max_limit),
     },
     {
         .templ=     "--blockSize=%s",
@@ -2176,6 +2201,10 @@ dump_config(const struct s3b_config *const c)
       c->block_cache.cache_file != NULL ? c->block_cache.cache_file : "");
     (*c->log)(LOG_DEBUG, "%24s: %s", "block_cache_no_verify", c->block_cache.no_verify ? "true" : "false");
     (*c->log)(LOG_DEBUG, "%24s: %s", "fadvise", c->block_cache.fadvise ? "true" : "false");
+    (*c->log)(LOG_DEBUG, "%24s: %s", "ttl_mode", c->block_cache.ttl_mode ? "true" : "false");
+    (*c->log)(LOG_DEBUG, "%24s: %u", "ttl_base", c->block_cache.ttl_base);
+    (*c->log)(LOG_DEBUG, "%24s: %u", "ttl_bonus", c->block_cache.ttl_bonus);
+    (*c->log)(LOG_DEBUG, "%24s: %u", "ttl_max_limit", c->block_cache.ttl_max_limit);
     if (!c->nbd) {
         (*c->log)(LOG_DEBUG, "fuse_main arguments:");
         for (i = 0; i < c->fuse_args.argc; i++)
@@ -2278,6 +2307,10 @@ usage(void)
     fprintf(stderr, "\t--%-27s %s\n", "test-delays", "In test mode, introduce random I/O delays");
     fprintf(stderr, "\t--%-27s %s\n", "test-discard", "In test mode, discard data and perform no I/O operations");
     fprintf(stderr, "\t--%-27s %s\n", "test-errors", "In test mode, introduce random I/O errors");
+    fprintf(stderr, "\t--%-27s %s\n", "ttlMode", "Enable Temporal Offset Logic for block eviction");
+    fprintf(stderr, "\t--%-27s %s\n", "ttlBase=NUM", "Initial survival duration (seconds)");
+    fprintf(stderr, "\t--%-27s %s\n", "ttlBonus=NUM", "Survival duration added per read (seconds)");
+    fprintf(stderr, "\t--%-27s %s\n", "ttlMaxLimit=NUM", "Maximum survival duration allowed (seconds)");
     fprintf(stderr, "\t--%-27s %s\n", "timeout=SECONDS", "Max time allowed for one HTTP operation");
     fprintf(stderr, "\t--%-27s %s\n", "version", "Show version information and exit");
     fprintf(stderr, "\t--%-27s %s\n", "vhost", "Use virtual host bucket style URL for all requests");

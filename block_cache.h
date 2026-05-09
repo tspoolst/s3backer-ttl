@@ -36,6 +36,10 @@
 
 // Configuration info structure for block_cache
 struct block_cache_conf {
+    u_int               ttl_mode;          /* Enable/disable temporal logic */
+    u_int               ttl_base;          /* Initial survival duration (seconds) */
+    u_int               ttl_bonus;         /* Duration added per read (seconds) */
+    u_int               ttl_max_limit;     /* Absolute ceiling for survival duration */
     u_int               block_size;
     u_int               cache_size;
     u_int               write_delay;

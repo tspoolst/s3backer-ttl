@@ -129,7 +129,8 @@
 //[of]:struct cache_entry {
 struct cache_entry {
     s3b_block_t                     block_num;      // block number - MUST BE FIRST
-    uint32_t                        access_count;
+    uint64_t                        current_ttl;       /* Absolute monotonic timestamp of death */
+    u_int                           max_ttl_offset;    /* Current total survival credit (duration) */
     u_int                           dirty:1;        // indicates state DIRTY or WRITING2
     u_int                           verify:1;       // data should be verified first
     uint32_t                        timeout:30;     // when to evict (CLEAN[2]) or write (DIRTY)
@@ -919,8 +920,7 @@ again:
         case CLEAN:         // Update timestamp and move to the end of the list to maintain LRU ordering
             TAILQ_REMOVE(cleans_list, entry, link);
             TAILQ_INSERT_TAIL(cleans_list, entry, link);
-            // Weighted TTL: Base timeout + (bonus minutes * access_count)
-            entry->timeout = block_cache_get_time(priv) + priv->clean_timeout + (entry->access_count * MULTIPLIER);
+            entry->timeout = block_cache_get_time(priv) + priv->clean_timeout;
             // FALLTHROUGH
         case DIRTY:         // Copy the cached data
         case WRITING:
