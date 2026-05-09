@@ -1,4 +1,5 @@
 
+//[of]:comments - about
 /*
  * s3backer - FUSE-based single file backing store via Amazon S3
  *
@@ -33,6 +34,7 @@
  * this exception statement from all source files in the program, then
  * also delete it here.
  */
+ //[cf]
 
 //[of]:includes
 #include "s3backer.h"
