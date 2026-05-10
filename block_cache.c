@@ -252,6 +252,93 @@ static s3b_hash_visit_t block_cache_check_one;
 //[cf]
 
 //[of]:functions
+//[of]:block_cache_update_ttl(struct block_cache_private *priv, struct cache_entry *entry, int new_block)
+static void block_cache_update_ttl(struct block_cache_private *priv, struct cache_entry *entry, int new_block)
+{
+    struct block_cache_conf *const config = priv->config;
+
+    if (!config->ttl_mode)
+        return;
+
+    const uint64_t ems = block_cache_get_ems(priv);
+    if (new_block) {
+        entry->max_ttl_offset = config->ttl_base;
+    } else {
+        entry->max_ttl_offset += config->ttl_bonus;
+        if (entry->max_ttl_offset > config->ttl_max_limit)
+            entry->max_ttl_offset = config->ttl_max_limit;
+    }
+    entry->current_ttl = ems + entry->max_ttl_offset;
+
+    // Update timeout for worker thread scheduling, avoiding READING_TIMEOUT
+    uint64_t t = (entry->current_ttl * 1000) / TIME_UNIT_MILLIS;
+    if (t >= READING_TIMEOUT)
+        t = READING_TIMEOUT - 1;
+    entry->timeout = (uint32_t)t;
+}
+//[cf]
+
+/*
+ * Find the best candidate for eviction among CLEAN/CLEAN2 entries.
+ * Find the best candidate for eviction among CLEAN[2] entries.
+ */
+//[of]:block_cache_find_evict_candidate(struct block_cache_private *priv)
+static struct cache_entry * block_cache_find_evict_candidate(struct block_cache_private *priv)
+{
+    struct block_cache_conf *const config = priv->config;
+    struct list_head *const lists[] = { &priv->lo_cleans, &priv->hi_cleans, NULL };
+    struct cache_entry *best = NULL;
+    const uint64_t ems = block_cache_get_ems(priv);
+    int i;
+
+    if (!config->ttl_mode)
+        return TAILQ_FIRST(&priv->lo_cleans) ?: TAILQ_FIRST(&priv->hi_cleans);
+
+    for (i = 0; lists[i] != NULL; i++) {
+        struct cache_entry *entry;
+        TAILQ_FOREACH(entry, lists[i], link) {
+            if (!best) {
+                best = entry;
+                continue;
+            }
+
+            // a. Stale Gate: Expired entries first
+            const int best_expired = best->current_ttl < ems;
+            const int entry_expired = entry->current_ttl < ems;
+            if (entry_expired != best_expired) {
+                if (entry_expired)
+                    best = entry;
+                continue;
+            }
+
+            // b. Life Expectancy: Lowest absolute current_ttl (Closest to death)
+            if (entry->current_ttl != best->current_ttl) {
+                if (entry->current_ttl < best->current_ttl)
+                    best = entry;
+                continue;
+            }
+
+            // c. Survival Credit Used: Largest (max_ttl_offset - (current_ttl - EMS))
+            // Survival credit used = amount of time already lived since last access.
+            // (current_ttl - EMS) is the remaining survival time.
+            // (max_ttl_offset - (current_ttl - EMS)) is the used survival time.
+            const int64_t best_used = (int64_t)best->max_ttl_offset - (best->current_ttl - ems);
+            const int64_t entry_used = (int64_t)entry->max_ttl_offset - (entry->current_ttl - ems);
+            if (entry_used > best_used) {
+                best = entry;
+                continue;
+            }
+
+            // d. LRU: Chronological fallback.
+            // We iterate from HEAD (oldest), so keeping 'best' if 'entry' is not strictly better preserves LRU.
+        }
+        if (best)
+            return best;
+    }
+    return NULL;
+}
+//[cf]
+
 /*
  * Wrap an underlying s3backer store with a block cache. Invoking the
  * destroy method will destroy both this and the inner s3backer store.
@@ -1613,6 +1700,16 @@ static int block_cache_cond_timedwait(struct block_cache_private *priv, pthread_
     wake_time.tv_sec = wake_time_millis / 1000;
     wake_time.tv_nsec = (wake_time_millis % 1000) * 1000000;
     return pthread_cond_timedwait(cond, &priv->mutex, &wake_time);
+}
+//[cf]
+
+/*
+ * Return current elapsed mount seconds (EMS).
+ */
+//[of]:block_cache_get_ems(struct block_cache_private *priv)
+static uint64_t block_cache_get_ems(struct block_cache_private *priv)
+{
+    return (block_cache_get_time_millis() - priv->start_time) / 1000;
 }
 //[cf]
 
