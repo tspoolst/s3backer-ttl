@@ -251,6 +251,7 @@ static s3b_hash_visit_t block_cache_check_one;
 #endif
 //[cf]
 
+//[of]:functions
 /*
  * Wrap an underlying s3backer store with a block cache. Invoking the
  * destroy method will destroy both this and the inner s3backer store.
@@ -1876,3 +1877,4 @@ static int block_cache_check_one(void *arg, void *value)
 //[cf]
 #endif
 
+//[cf]
