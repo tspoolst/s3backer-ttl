@@ -33,7 +33,7 @@
  * this exception statement from all source files in the program, then
  * also delete it here.
  */
-
+//[of]:includes
 #include "s3backer.h"
 #include "block_cache.h"
 #include "zero_cache.h"
@@ -45,7 +45,9 @@
 #include "dcache.h"
 #include "compress.h"
 #include "util.h"
+//[cf]
 
+//[of]:definitions
 /****************************************************************************
  *                          DEFINITIONS                                     *
  ****************************************************************************/
@@ -80,10 +82,9 @@
 #define S3BACKER_DEFAULT_BLOCK_CACHE_SIZE           1000
 #define S3BACKER_DEFAULT_BLOCK_CACHE_NUM_THREADS    20
 #define S3BACKER_DEFAULT_BLOCK_CACHE_WRITE_DELAY    250             // 250ms
-#define S3BACKER_DEFAULT_BLOCK_CACHE_TIMEOUT        0
+#define S3BACKER_DEFAULT_BLOCK_CACHE_TIMEOUT_MILLISECONDS        0
+#define S3BACKER_DEFAULT_BLOCK_CACHE_TIMEOUT_DAYS        0
 #define S3BACKER_DEFAULT_BLOCK_CACHE_MAX_DIRTY      0
-#define S3BACKER_DEFAULT_TTL_MODE                   0
-#define S3BACKER_DEFAULT_TTL_BASE                   60
 #define S3BACKER_DEFAULT_TTL_BONUS                  30
 #define S3BACKER_DEFAULT_TTL_MAX_LIMIT              3600
 #define S3BACKER_DEFAULT_READ_AHEAD                 4
@@ -103,6 +104,7 @@
 #endif
 #define FUSE_MAX_DAEMON_TIMEOUT_STRING  s3bquote(FUSE_MAX_DAEMON_TIMEOUT)
 #endif  // __APPLE__
+//[cf]
 
 /****************************************************************************
  *                          FUNCTION DECLARATIONS                           *
@@ -224,15 +226,13 @@ static struct s3b_config config = {
 
     // Block cache config
     .block_cache= {
-        .ttl_mode=              S3BACKER_DEFAULT_TTL_MODE,
-        .ttl_base=              S3BACKER_DEFAULT_TTL_BASE,
         .ttl_bonus=             S3BACKER_DEFAULT_TTL_BONUS,
         .ttl_max_limit=         S3BACKER_DEFAULT_TTL_MAX_LIMIT,
         .cache_size=            S3BACKER_DEFAULT_BLOCK_CACHE_SIZE,
         .num_threads=           S3BACKER_DEFAULT_BLOCK_CACHE_NUM_THREADS,
         .write_delay=           S3BACKER_DEFAULT_BLOCK_CACHE_WRITE_DELAY,
         .max_dirty=             S3BACKER_DEFAULT_BLOCK_CACHE_MAX_DIRTY,
-        .timeout=               S3BACKER_DEFAULT_BLOCK_CACHE_TIMEOUT,
+        .timeout=               S3BACKER_DEFAULT_BLOCK_CACHE_TIMEOUT_MILLISECONDS,
         .read_ahead=            S3BACKER_DEFAULT_READ_AHEAD,
         .read_ahead_trigger=    S3BACKER_DEFAULT_READ_AHEAD_TRIGGER,
     },
@@ -256,7 +256,9 @@ static struct s3b_config config = {
     .erase=                 0,
     .no_auto_detect=        0,
     .reset=                 0,
-    .log=                   stderr_logger
+    .log=                   stderr_logger,
+    .timeout_ms=            S3BACKER_DEFAULT_BLOCK_CACHE_TIMEOUT_MILLISECONDS,
+    .timeout_days=          S3BACKER_DEFAULT_BLOCK_CACHE_TIMEOUT_DAYS,
 };
 
 /*
@@ -265,6 +267,7 @@ static struct s3b_config config = {
  * Note: each entry here is copied and modified, allowing both "--fooBar=X" and "-o fooBar=X" to work.
  * See "dup_option_list" in s3backer_get_config2().
  */
+//[of]:static const struct fuse_opt option_list[] = {
 static const struct fuse_opt option_list[] = {
     {
         .templ=     "--accessFile=%s",
@@ -339,7 +342,11 @@ static const struct fuse_opt option_list[] = {
     },
     {
         .templ=     "--blockCacheTimeout=%u",
-        .offset=    offsetof(struct s3b_config, block_cache.timeout),
+        .offset=    offsetof(struct s3b_config, timeout_ms),
+    },
+    {
+        .templ=     "--blockCacheTimeoutDays=%u",
+        .offset=    offsetof(struct s3b_config, timeout_days),
     },
     {
         .templ=     "--blockCacheWriteDelay=%u",
@@ -379,15 +386,6 @@ static const struct fuse_opt option_list[] = {
         .templ=     "--blockCacheFileAdvise",
         .offset=    offsetof(struct s3b_config, block_cache.fadvise),
         .value=     1
-    },
-    {
-        .templ=     "--ttlMode",
-        .offset=    offsetof(struct s3b_config, block_cache.ttl_mode),
-        .value=     1
-    },
-    {
-        .templ=     "--ttlBase=%u",
-        .offset=    offsetof(struct s3b_config, block_cache.ttl_base),
     },
     {
         .templ=     "--ttlBonus=%u",
@@ -617,6 +615,7 @@ static const struct fuse_opt option_list[] = {
         .offset=    offsetof(struct s3b_config, ip_tos),
     },
 };
+//[cf]
 static const int num_options = sizeof(option_list) / sizeof(*option_list);
 
 // Default flags we send to FUSE
@@ -1803,6 +1802,19 @@ validate_config(int parse_only)
     if (config.block_cache.num_protected > config.block_cache.cache_size)
         warnx("\"--blockCacheNumProtected\" is larger than cache size; this may cause performance problems");
 
+    // Convert raw FUSE inputs into internal time unit ticks (TIME_UNIT_MILLIS = 64ms)
+    uint64_t total_timeout_ms = (uint64_t)config.timeout_ms + ((uint64_t)config.timeout_days * 24 * 60 * 60 * 1000);
+    uint64_t total_ticks = (total_timeout_ms + TIME_UNIT_MILLIS - 1) / TIME_UNIT_MILLIS;
+
+    // Enforce safety cap on ticks to prevent internal 30-bit time unit overflow (max ~795 days)
+    uint64_t max_safe_ticks = (700ULL * 24 * 60 * 60 * 1000) / TIME_UNIT_MILLIS;
+    if (total_ticks > max_safe_ticks) {
+        warnx("\"--blockCacheTimeout\" + \"--blockCacheTimeoutDays\" exceeds safe limit of 700 days; capping to 700 days");
+        config.block_cache.timeout = (u_int)max_safe_ticks;
+    } else {
+        config.block_cache.timeout = (u_int)total_ticks;
+    }
+
     // Check mount point, flag combinations
     if (config.nbd) {
         if (config.erase || config.reset) {
@@ -2190,7 +2202,7 @@ dump_config(const struct s3b_config *const c)
     (*c->log)(LOG_DEBUG, "%24s: %u entries", "md5_cache_size", c->ec_protect.cache_size);
     (*c->log)(LOG_DEBUG, "%24s: %u entries", "block_cache_size", c->block_cache.cache_size);
     (*c->log)(LOG_DEBUG, "%24s: %u threads", "block_cache_threads", c->block_cache.num_threads);
-    (*c->log)(LOG_DEBUG, "%24s: %ums", "block_cache_timeout", c->block_cache.timeout);
+    (*c->log)(LOG_DEBUG, "%24s: %ums", "block_cache_timeout_milliseconds", c->block_cache.timeout);
     (*c->log)(LOG_DEBUG, "%24s: %ums", "block_cache_write_delay", c->block_cache.write_delay);
     (*c->log)(LOG_DEBUG, "%24s: %u blocks", "block_cache_max_dirty", c->block_cache.max_dirty);
     (*c->log)(LOG_DEBUG, "%24s: %s", "block_cache_sync", c->block_cache.synchronous ? "true" : "false");
@@ -2201,8 +2213,6 @@ dump_config(const struct s3b_config *const c)
       c->block_cache.cache_file != NULL ? c->block_cache.cache_file : "");
     (*c->log)(LOG_DEBUG, "%24s: %s", "block_cache_no_verify", c->block_cache.no_verify ? "true" : "false");
     (*c->log)(LOG_DEBUG, "%24s: %s", "fadvise", c->block_cache.fadvise ? "true" : "false");
-    (*c->log)(LOG_DEBUG, "%24s: %s", "ttl_mode", c->block_cache.ttl_mode ? "true" : "false");
-    (*c->log)(LOG_DEBUG, "%24s: %u", "ttl_base", c->block_cache.ttl_base);
     (*c->log)(LOG_DEBUG, "%24s: %u", "ttl_bonus", c->block_cache.ttl_bonus);
     (*c->log)(LOG_DEBUG, "%24s: %u", "ttl_max_limit", c->block_cache.ttl_max_limit);
     if (!c->nbd) {
@@ -2307,8 +2317,6 @@ usage(void)
     fprintf(stderr, "\t--%-27s %s\n", "test-delays", "In test mode, introduce random I/O delays");
     fprintf(stderr, "\t--%-27s %s\n", "test-discard", "In test mode, discard data and perform no I/O operations");
     fprintf(stderr, "\t--%-27s %s\n", "test-errors", "In test mode, introduce random I/O errors");
-    fprintf(stderr, "\t--%-27s %s\n", "ttlMode", "Enable Temporal Offset Logic for block eviction");
-    fprintf(stderr, "\t--%-27s %s\n", "ttlBase=NUM", "Initial survival duration (seconds)");
     fprintf(stderr, "\t--%-27s %s\n", "ttlBonus=NUM", "Survival duration added per read (seconds)");
     fprintf(stderr, "\t--%-27s %s\n", "ttlMaxLimit=NUM", "Maximum survival duration allowed (seconds)");
     fprintf(stderr, "\t--%-27s %s\n", "timeout=SECONDS", "Max time allowed for one HTTP operation");
@@ -2322,7 +2330,7 @@ usage(void)
     fprintf(stderr, "\t--%-27s \"%s\"\n", "baseURL", "http://s3." S3_DOMAIN "/");
     fprintf(stderr, "\t--%-27s %u\n", "blockCacheSize", S3BACKER_DEFAULT_BLOCK_CACHE_SIZE);
     fprintf(stderr, "\t--%-27s %u\n", "blockCacheThreads", S3BACKER_DEFAULT_BLOCK_CACHE_NUM_THREADS);
-    fprintf(stderr, "\t--%-27s %u\n", "blockCacheTimeout", S3BACKER_DEFAULT_BLOCK_CACHE_TIMEOUT);
+    fprintf(stderr, "\t--%-27s %u\n", "blockCacheTimeout", S3BACKER_DEFAULT_BLOCK_CACHE_TIMEOUT_MILLISECONDS);
     fprintf(stderr, "\t--%-27s %u\n", "blockCacheWriteDelay", S3BACKER_DEFAULT_BLOCK_CACHE_WRITE_DELAY);
     fprintf(stderr, "\t--%-27s %d\n", "blockSize", S3BACKER_DEFAULT_BLOCKSIZE);
     fprintf(stderr, "\t--%-27s \"%s\"\n", "filename", S3BACKER_DEFAULT_FILENAME);

@@ -34,6 +34,9 @@
  * also delete it here.
  */
 
+ // One time unit in milliseconds
+#define TIME_UNIT_MILLIS            64
+
 // Overal application configuration info
 struct s3b_config {
 
@@ -82,6 +85,8 @@ struct s3b_config {
     char                        *compress_level;
     int                         compress_flag;
     int                         encrypt;
+    u_int                       timeout_ms;
+    u_int                       timeout_days;
 };
 
 // Options

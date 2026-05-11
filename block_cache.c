@@ -129,7 +129,6 @@
 //[of]:struct cache_entry {
 struct cache_entry {
     s3b_block_t                     block_num;      // block number - MUST BE FIRST
-    uint64_t                        current_ttl;       /* Absolute monotonic timestamp of death */
     u_int                           max_ttl_offset;    /* Current total survival credit (duration) */
     u_int                           dirty:1;        // indicates state DIRTY or WRITING2
     u_int                           verify:1;       // data should be verified first
@@ -150,6 +149,8 @@ struct cache_entry {
                                                 ((entry)->timeout == READING_TIMEOUT ?          \
                                                   ((entry)->verify ? READING2 : READING) :      \
                                                   (entry)->dirty ? WRITING2 : WRITING))
+#define ENTRY_NEW                   1
+#define ENTRY_LIVE                  0
 
 // One time unit in milliseconds
 #define TIME_UNIT_MILLIS            64
@@ -256,25 +257,20 @@ static s3b_hash_visit_t block_cache_check_one;
 static void block_cache_update_ttl(struct block_cache_private *priv, struct cache_entry *entry, int new_block)
 {
     struct block_cache_conf *const config = priv->config;
+    const int ttl_mode = (config->timeout > 0 && config->ttl_max_limit > 0);
 
-    if (!config->ttl_mode)
+    if (!ttl_mode)
         return;
 
-    const uint64_t ems = block_cache_get_ems(priv);
     if (new_block) {
-        entry->max_ttl_offset = config->ttl_base;
+        // config->timeout is stored as ticks, convert back to seconds
+        entry->max_ttl_offset = (u_int)(((uint64_t)config->timeout * TIME_UNIT_MILLIS + 999) / 1000);
     } else {
         entry->max_ttl_offset += config->ttl_bonus;
         if (entry->max_ttl_offset > config->ttl_max_limit)
             entry->max_ttl_offset = config->ttl_max_limit;
     }
-    entry->current_ttl = ems + entry->max_ttl_offset;
-
-    // Update timeout for worker thread scheduling, avoiding READING_TIMEOUT
-    uint64_t t = (entry->current_ttl * 1000) / TIME_UNIT_MILLIS;
-    if (t >= READING_TIMEOUT)
-        t = READING_TIMEOUT - 1;
-    entry->timeout = (uint32_t)t;
+    entry->timeout = block_cache_get_time(priv) + (uint32_t)(((uint64_t)entry->max_ttl_offset * 1000) / TIME_UNIT_MILLIS);
 }
 //[cf]
 
@@ -288,10 +284,11 @@ static struct cache_entry * block_cache_find_evict_candidate(struct block_cache_
     struct block_cache_conf *const config = priv->config;
     struct list_head *const lists[] = { &priv->lo_cleans, &priv->hi_cleans, NULL };
     struct cache_entry *best = NULL;
-    const uint64_t ems = block_cache_get_ems(priv);
+    const uint32_t now = block_cache_get_time(priv);
     int i;
+    const int ttl_mode = (config->timeout > 0 && config->ttl_max_limit > 0);
 
-    if (!config->ttl_mode)
+    if (!ttl_mode)
         return TAILQ_FIRST(&priv->lo_cleans) ?: TAILQ_FIRST(&priv->hi_cleans);
 
     for (i = 0; lists[i] != NULL; i++) {
@@ -303,28 +300,25 @@ static struct cache_entry * block_cache_find_evict_candidate(struct block_cache_
             }
 
             // a. Stale Gate: Expired entries first
-            const int best_expired = best->current_ttl < ems;
-            const int entry_expired = entry->current_ttl < ems;
+            const int best_expired = now >= best->timeout;
+            const int entry_expired = now >= entry->timeout;
             if (entry_expired != best_expired) {
                 if (entry_expired)
                     best = entry;
                 continue;
             }
 
-            // b. Life Expectancy: Lowest absolute current_ttl (Closest to death)
-            if (entry->current_ttl != best->current_ttl) {
-                if (entry->current_ttl < best->current_ttl)
+            // b. Life Expectancy: Lowest absolute timeout (Closest to death)
+            if (entry->timeout != best->timeout) {
+                if (entry->timeout < best->timeout)
                     best = entry;
                 continue;
             }
 
-            // c. Survival Credit Used: Largest (max_ttl_offset - (current_ttl - EMS))
-            // Survival credit used = amount of time already lived since last access.
-            // (current_ttl - EMS) is the remaining survival time.
-            // (max_ttl_offset - (current_ttl - EMS)) is the used survival time.
-            const int64_t best_used = (int64_t)best->max_ttl_offset - (best->current_ttl - ems);
-            const int64_t entry_used = (int64_t)entry->max_ttl_offset - (entry->current_ttl - ems);
-            if (entry_used > best_used) {
+            // c. Survival Credit Used: Largest max_ttl_offset breaks ties
+            // Since both entries expire at the exact same timeout, 
+            // the one with a higher max_ttl_offset has lived longer in total and thus used more credit.
+            if (entry->max_ttl_offset > best->max_ttl_offset) {
                 best = entry;
                 continue;
             }
@@ -381,7 +375,7 @@ struct s3backer_store * block_cache_create(struct block_cache_conf *config, stru
     priv->config = config;
     priv->inner = inner;
     priv->start_time = block_cache_get_time_millis();
-    priv->clean_timeout = (config->timeout + TIME_UNIT_MILLIS - 1) / TIME_UNIT_MILLIS;
+    priv->clean_timeout = config->timeout;
     priv->dirty_timeout = (config->write_delay + TIME_UNIT_MILLIS - 1) / TIME_UNIT_MILLIS;
     if ((r = pthread_mutex_init(&priv->mutex, NULL)) != 0)
         goto fail2;
@@ -1009,6 +1003,7 @@ again:
             TAILQ_REMOVE(cleans_list, entry, link);
             TAILQ_INSERT_TAIL(cleans_list, entry, link);
             entry->timeout = block_cache_get_time(priv) + priv->clean_timeout;
+            block_cache_update_ttl(priv, entry, ENTRY_LIVE);
             // FALLTHROUGH
         case DIRTY:         // Copy the cached data
         case WRITING:
@@ -1119,6 +1114,7 @@ read:
             (*config->log)(LOG_ERR, "can't record cached block! %s", strerror(r));
     }
     entry->timeout = block_cache_get_time(priv) + priv->clean_timeout;
+    block_cache_update_ttl(priv, entry, ENTRY_NEW);
     TAILQ_INSERT_TAIL(cleans_list, entry, link);
     priv->num_cleans++;
     assert(ENTRY_GET_STATE(entry) == CLEAN);
@@ -1386,10 +1382,7 @@ again:
             priv->stats.out_of_memory_errors++;
             return r;
         }
-    } else if ((entry = TAILQ_FIRST(&priv->lo_cleans)) != NULL) {
-        block_cache_free_entry(priv, &entry);
-        goto again;
-    } else if ((entry = TAILQ_FIRST(&priv->hi_cleans)) != NULL) {
+    } else if ((entry = block_cache_find_evict_candidate(priv)) != NULL) {
         block_cache_free_entry(priv, &entry);
         goto again;
     } else
@@ -1507,14 +1500,22 @@ static void * block_cache_worker_main(void *arg)
 
 //[of]:        // Evict any CLEAN[2] blocks that have timed out (if enabled)
         // Evict any CLEAN[2] blocks that have timed out (if enabled)
+        const int ttl_mode = (config->timeout > 0 && config->ttl_max_limit > 0);
         if (priv->clean_timeout != 0) {
-            while ((clean_entry = TAILQ_FIRST(&priv->lo_cleans)) != NULL && now >= clean_entry->timeout) {
-                block_cache_free_entry(priv, &clean_entry);
-                pthread_cond_signal(&priv->space_avail);
-            }
-            while ((clean_entry = TAILQ_FIRST(&priv->hi_cleans)) != NULL && now >= clean_entry->timeout) {
-                block_cache_free_entry(priv, &clean_entry);
-                pthread_cond_signal(&priv->space_avail);
+            if (ttl_mode) {
+                while ((clean_entry = block_cache_find_evict_candidate(priv)) != NULL && now >= clean_entry->timeout) {
+                    block_cache_free_entry(priv, &clean_entry);
+                    pthread_cond_signal(&priv->space_avail);
+                }
+            } else {
+                while ((clean_entry = TAILQ_FIRST(&priv->lo_cleans)) != NULL && now >= clean_entry->timeout) {
+                    block_cache_free_entry(priv, &clean_entry);
+                    pthread_cond_signal(&priv->space_avail);
+                }
+                while ((clean_entry = TAILQ_FIRST(&priv->hi_cleans)) != NULL && now >= clean_entry->timeout) {
+                    block_cache_free_entry(priv, &clean_entry);
+                    pthread_cond_signal(&priv->space_avail);
+                }
             }
         }
 //[cf]
@@ -1571,6 +1572,10 @@ static void * block_cache_worker_main(void *arg)
                 TAILQ_INSERT_TAIL(cleans_list, entry, link);
                 entry->verify = 0;
                 entry->timeout = block_cache_get_time(priv) + priv->clean_timeout;
+                if (entry->max_ttl_offset == 0)
+                    block_cache_update_ttl(priv, entry, ENTRY_NEW);
+                else
+                    block_cache_update_ttl(priv, entry, ENTRY_LIVE);
                 priv->num_cleans++;
                 assert(ENTRY_GET_STATE(entry) == CLEAN);
                 pthread_cond_signal(&priv->space_avail);
@@ -1700,16 +1705,6 @@ static int block_cache_cond_timedwait(struct block_cache_private *priv, pthread_
     wake_time.tv_sec = wake_time_millis / 1000;
     wake_time.tv_nsec = (wake_time_millis % 1000) * 1000000;
     return pthread_cond_timedwait(cond, &priv->mutex, &wake_time);
-}
-//[cf]
-
-/*
- * Return current elapsed mount seconds (EMS).
- */
-//[of]:block_cache_get_ems(struct block_cache_private *priv)
-static uint64_t block_cache_get_ems(struct block_cache_private *priv)
-{
-    return (block_cache_get_time_millis() - priv->start_time) / 1000;
 }
 //[cf]
 

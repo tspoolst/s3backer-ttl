@@ -36,8 +36,6 @@
 
 // Configuration info structure for block_cache
 struct block_cache_conf {
-    u_int               ttl_mode;          /* Enable/disable temporal logic */
-    u_int               ttl_base;          /* Initial survival duration (seconds) */
     u_int               ttl_bonus;         /* Duration added per read (seconds) */
     u_int               ttl_max_limit;     /* Absolute ceiling for survival duration */
     u_int               block_size;
@@ -76,4 +74,3 @@ struct block_cache_stats {
 extern struct s3backer_store *block_cache_create(struct block_cache_conf *config, struct s3backer_store *inner);
 extern void block_cache_get_stats(struct s3backer_store *s3b, struct block_cache_stats *stats);
 extern void block_cache_clear_stats(struct s3backer_store *s3b);
-
