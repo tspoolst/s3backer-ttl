@@ -1814,6 +1814,13 @@ validate_config(int parse_only)
     } else {
         config.block_cache.timeout = (u_int)total_ticks;
     }
+    
+    // Enforce safety cap on ttlMaxLimit to prevent internal 30-bit time unit overflow
+    uint64_t max_safe_sec = 700ULL * 24 * 60 * 60;
+    if (config.block_cache.ttl_max_limit > max_safe_sec) {
+        warnx("\"--ttlMaxLimit\" exceeds safe limit of 700 days; capping to 700 days");
+        config.block_cache.ttl_max_limit = max_safe_sec;
+    }
 
     // Check mount point, flag combinations
     if (config.nbd) {
@@ -2202,7 +2209,8 @@ dump_config(const struct s3b_config *const c)
     (*c->log)(LOG_DEBUG, "%24s: %u entries", "md5_cache_size", c->ec_protect.cache_size);
     (*c->log)(LOG_DEBUG, "%24s: %u entries", "block_cache_size", c->block_cache.cache_size);
     (*c->log)(LOG_DEBUG, "%24s: %u threads", "block_cache_threads", c->block_cache.num_threads);
-    (*c->log)(LOG_DEBUG, "%24s: %ums", "block_cache_timeout_milliseconds", c->block_cache.timeout);
+    (*c->log)(LOG_DEBUG, "%24s: %ums", "block_cache_timeout", c->timeout_ms);
+    (*c->log)(LOG_DEBUG, "%24s: %u days", "block_cache_timeout_days", c->timeout_days);
     (*c->log)(LOG_DEBUG, "%24s: %ums", "block_cache_write_delay", c->block_cache.write_delay);
     (*c->log)(LOG_DEBUG, "%24s: %u blocks", "block_cache_max_dirty", c->block_cache.max_dirty);
     (*c->log)(LOG_DEBUG, "%24s: %s", "block_cache_sync", c->block_cache.synchronous ? "true" : "false");
