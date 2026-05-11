@@ -11,7 +11,7 @@ name: Coding rule
 
   PROJECT GOAL: We are implementing s3backer-ttl using Temporal Offset Logic.
 
-  DESIRED FUNCTIONS:  
+  DESIRED FUNCTIONS:  A work in progress.
   1. TIMEBASE: 
      - 64-bit monotonic counter (EMS = Elapsed_Mount_Seconds).
      - Initialized at 0 on mount. All TTL metrics are absolute timestamps relative to this 0-anchor.

@@ -1814,7 +1814,7 @@ validate_config(int parse_only)
     } else {
         config.block_cache.timeout = (u_int)total_ticks;
     }
-    
+
     // Enforce safety cap on ttlMaxLimit to prevent internal 30-bit time unit overflow
     uint64_t max_safe_sec = 700ULL * 24 * 60 * 60;
     if (config.block_cache.ttl_max_limit > max_safe_sec) {
