@@ -220,6 +220,7 @@ The block cache is configured by the following command line options:
 .Fl \-blockCacheSync ,
 .Fl \-blockCacheThreads ,
 .Fl \-blockCacheTimeout ,
+.Fl \-blockCacheTimeoutDays ,
 .Fl \-blockCacheWriteDelay ,
 and
 .Fl \-blockCacheRecoverDirtyBlocks .
@@ -526,7 +527,12 @@ Set the size of the thread pool associated with the block cache (if enabled).
 This bounds the number of simultaneous writes that can occur to the network.
 Default value is 20.
 .It Fl \-blockCacheTimeout=MILLIS
-Specify the maximum time a clean entry can remain in the block cache before it will be forcibly evicted and its associated memory freed.
+Specify the maximum time in milliseconds a clean entry can remain in the block cache before it will be forcibly evicted and its associated memory freed.
+A value of zero means there is no timeout; in this case, the number of entries in the block cache will never decrease, eventually reaching
+the maximum size configured by
+.It Fl \-blockCacheTimeoutDays=DAYS
+Specify the maximum days a clean entry can remain in the block cache before it will be forcibly evicted and its associated memory freed.
+This value will be added to blockCacheTimeout to reach up to 700 days.
 A value of zero means there is no timeout; in this case, the number of entries in the block cache will never decrease, eventually reaching
 the maximum size configured by
 .Fl \-blockCacheSize

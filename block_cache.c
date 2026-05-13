@@ -257,7 +257,7 @@ static s3b_hash_visit_t block_cache_check_one;
 static void block_cache_update_ttl(struct block_cache_private *priv, struct cache_entry *entry, int new_block)
 {
     struct block_cache_conf *const config = priv->config;
-    const int ttl_mode = (config->timeout > 0 && config->ttl_max_limit > 0);
+    const int ttl_mode = (config->timeout > 0);
 
     if (!ttl_mode)
         return;
@@ -265,7 +265,7 @@ static void block_cache_update_ttl(struct block_cache_private *priv, struct cach
     if (new_block) {
         // config->timeout is stored as ticks, convert back to seconds
         entry->max_ttl_offset = (u_int)(((uint64_t)config->timeout * TIME_UNIT_MILLIS + 999) / 1000);
-    } else {
+    } else if (config->ttl_max_limit > 0) {
         entry->max_ttl_offset += config->ttl_bonus;
         if (entry->max_ttl_offset > config->ttl_max_limit)
             entry->max_ttl_offset = config->ttl_max_limit;
@@ -275,7 +275,6 @@ static void block_cache_update_ttl(struct block_cache_private *priv, struct cach
 //[cf]
 
 /*
- * Find the best candidate for eviction among CLEAN/CLEAN2 entries.
  * Find the best candidate for eviction among CLEAN[2] entries.
  */
 //[of]:block_cache_find_evict_candidate(struct block_cache_private *priv)
@@ -283,53 +282,25 @@ static struct cache_entry * block_cache_find_evict_candidate(struct block_cache_
 {
     struct block_cache_conf *const config = priv->config;
     struct list_head *const lists[] = { &priv->lo_cleans, &priv->hi_cleans, NULL };
-    struct cache_entry *best = NULL;
-    const uint32_t now = block_cache_get_time(priv);
     int i;
-    const int ttl_mode = (config->timeout > 0 && config->ttl_max_limit > 0);
+    uint32_t now = block_cache_get_time(priv);
+    const int ttl_extension_mode = (config->ttl_bonus > 0);
 
-    if (!ttl_mode)
-        return TAILQ_FIRST(&priv->lo_cleans) ?: TAILQ_FIRST(&priv->hi_cleans);
-
-    for (i = 0; lists[i] != NULL; i++) {
-        struct cache_entry *entry;
-        TAILQ_FOREACH(entry, lists[i], link) {
-            if (!best) {
-                best = entry;
-                continue;
+    // TTL extension mode:
+    // We evict the first found expired block, starting from the LRU.
+    if (ttl_extension_mode) {
+        for (i = 0; lists[i] != NULL; i++) {
+            struct cache_entry *entry;
+            TAILQ_FOREACH(entry, lists[i], link) {
+                // If this block is expired, return it immediately.
+                if (now >= entry->timeout)
+                    return entry;
             }
-
-            // a. Stale Gate: Expired entries first
-            const int best_expired = now >= best->timeout;
-            const int entry_expired = now >= entry->timeout;
-            if (entry_expired != best_expired) {
-                if (entry_expired)
-                    best = entry;
-                continue;
-            }
-
-            // b. Life Expectancy: Lowest absolute timeout (Closest to death)
-            if (entry->timeout != best->timeout) {
-                if (entry->timeout < best->timeout)
-                    best = entry;
-                continue;
-            }
-
-            // c. Survival Credit Used: Largest max_ttl_offset breaks ties
-            // Since both entries expire at the exact same timeout, 
-            // the one with a higher max_ttl_offset has lived longer in total and thus used more credit.
-            if (entry->max_ttl_offset > best->max_ttl_offset) {
-                best = entry;
-                continue;
-            }
-
-            // d. LRU: Chronological fallback.
-            // We iterate from HEAD (oldest), so keeping 'best' if 'entry' is not strictly better preserves LRU.
         }
-        if (best)
-            return best;
     }
-    return NULL;
+
+    // If no expired blocks found and capacity_eviction_mode is enabled, just return the LRU block.
+    return TAILQ_FIRST(&priv->lo_cleans) ?: TAILQ_FIRST(&priv->hi_cleans);
 }
 //[cf]
 
@@ -1119,6 +1090,9 @@ read:
     priv->num_cleans++;
     assert(ENTRY_GET_STATE(entry) == CLEAN);
 
+    if (priv->clean_timeout != 0)
+        pthread_cond_signal(&priv->worker_work);
+
     // If data was only verified, we have to actually go read it now
     if (verified_but_not_read)
         goto again;
@@ -1473,6 +1447,9 @@ static void * block_cache_worker_main(void *arg)
     u_int thread_id;
     void *buf;
     int r;
+    const int ttl_extension_mode = (config->ttl_bonus > 0);
+    struct list_head *const lists[] = { &priv->lo_cleans, &priv->hi_cleans, NULL };
+    int i;
 
     // Grab lock
     pthread_mutex_lock(&priv->mutex);
@@ -1500,13 +1477,23 @@ static void * block_cache_worker_main(void *arg)
 
 //[of]:        // Evict any CLEAN[2] blocks that have timed out (if enabled)
         // Evict any CLEAN[2] blocks that have timed out (if enabled)
-        const int ttl_mode = (config->timeout > 0 && config->ttl_max_limit > 0);
         if (priv->clean_timeout != 0) {
-            if (ttl_mode) {
-                while ((clean_entry = block_cache_find_evict_candidate(priv)) != NULL && now >= clean_entry->timeout) {
-                    block_cache_free_entry(priv, &clean_entry);
-                    pthread_cond_signal(&priv->space_avail);
+            if (ttl_extension_mode) {
+                struct cache_entry *best = NULL;
+                for (i = 0; lists[i] != NULL; i++) {
+                    for (entry = TAILQ_FIRST(lists[i]); entry != NULL; entry = clean_entry) {
+                        clean_entry = TAILQ_NEXT(entry, link);
+                        // If this block is expired, reap it.
+                        if (now >= entry->timeout) {
+                            struct cache_entry *to_free = entry;
+                            block_cache_free_entry(priv, &to_free);
+                            pthread_cond_signal(&priv->space_avail);
+                        } else if (best == NULL || entry->timeout < best->timeout) {
+                            best = entry;
+                        }
+                    }
                 }
+                clean_entry = best;
             } else {
                 while ((clean_entry = TAILQ_FIRST(&priv->lo_cleans)) != NULL && now >= clean_entry->timeout) {
                     block_cache_free_entry(priv, &clean_entry);
@@ -1516,6 +1503,7 @@ static void * block_cache_worker_main(void *arg)
                     block_cache_free_entry(priv, &clean_entry);
                     pthread_cond_signal(&priv->space_avail);
                 }
+                clean_entry = TAILQ_FIRST(&priv->lo_cleans) ?: TAILQ_FIRST(&priv->hi_cleans);
             }
         }
 //[cf]
