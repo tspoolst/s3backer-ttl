@@ -56,7 +56,17 @@ dd if=$MNT/file bs=4k count=1 status=none > /dev/null
 echo ">>> Stats after expiration:"
 grep -E 'block_cache_current_size|block_cache_read_misses|block_cache_read_hits' $MNT/stats
 
-gl_wait=3
+gl_wait=2
+echo ">>> Waiting ${gl_wait} seconds for TTL to fully expire..."
+sleep ${gl_wait}
+
+echo ">>> Reading block final time (should be a cache MISS)..."
+dd if=$MNT/file bs=4k count=1 status=none > /dev/null
+
+echo ">>> Stats after expiration:"
+grep -E 'block_cache_current_size|block_cache_read_misses|block_cache_read_hits' $MNT/stats
+
+gl_wait=5
 echo ">>> Waiting ${gl_wait} seconds for TTL to fully expire..."
 sleep ${gl_wait}
 
